@@ -124,7 +124,7 @@ app.post("/login", loginLimiter, async (req, res) => {
 });
 
 
-app.get("/me", auth, (req, res) => {
+app.get("/me", auth, transferLimiter, (req, res) => {
   db.get(`SELECT username, email FROM users WHERE id = ?`, [req.user.id], (err, row) => {
     if (err) return res.status(500).json({ error: 'Database error' });
     res.json(row);
