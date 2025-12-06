@@ -4,24 +4,44 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const sqlite3 = require("sqlite3").verbose();
 const crypto = require("crypto");
+const bcrypt = require('bcrypt');
+const rateLimit = require('express-rate-limit');
+const csrf = require('csurf');
 
 const app = express();
 
 // --- BASIC CORS (clean, not vulnerable) ---
 app.use(
   cors({
-   origin: ["http://localhost:3001", "http://127.0.0.1:3001"],
+    origin: ["http://localhost:3001", "http://127.0.0.1:3001"],
     credentials: true
   })
 );
 
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
+
+// --- RATE LIMITING (security) ---
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 login attempts
+  message: 'Too many login attempts, please try again later'
+});
+
+const transferLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many requests, please try again later'
+});
+
+// --- CSRF PROTECTION (security) ---
+const csrfProtection = csrf({ cookie: true });
 
 // --- IN-MEMORY SQLITE DB (clean) ---
 const db = new sqlite3.Database(":memory:");
 
-db.serialize(() => {
+db.serialize(async () => {
   db.run(`
     CREATE TABLE users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,24 +51,7 @@ db.serialize(() => {
     );
   `);
 
-  db.run(`
-    CREATE TABLE transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      amount REAL,
-      description TEXT
-    );
-  `);
-
-  db.run(`
-    CREATE TABLE feedback (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user TEXT,
-      comment TEXT
-    );
-  `);
-
-  const passwordHash = crypto.createHash("sha256").update("password123").digest("hex");
+  const passwordHash = await bcrypt.hash("password123", 12);
 
   db.run(`INSERT INTO users (username, password_hash, email)
           VALUES ('alice', '${passwordHash}', 'alice@example.com');`);
