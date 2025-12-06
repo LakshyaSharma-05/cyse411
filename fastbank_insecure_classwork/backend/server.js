@@ -164,10 +164,7 @@ app.get("/transactions", auth, (req, res) => {
   });
 });
 
-// ------------------------------------------------------------
-// FIXED: Stored XSS + SQLi in feedback - added CSRF protection
-// ------------------------------------------------------------
-app.post("/feedback", auth, csrfProtection, (req, res) => {
+app.post("/feedback", auth, csrfProtection, transferLimiter, (req, res) => {
   const comment = req.body.comment;
   const userId = req.user.id;
 
@@ -184,6 +181,13 @@ app.post("/feedback", auth, csrfProtection, (req, res) => {
       if (err) return res.status(500).json({ error: 'Database error' });
       res.json({ success: true });
     });
+  });
+});
+
+app.get("/feedback", auth, (req, res) => {
+  db.all("SELECT user, comment FROM feedback ORDER BY id DESC", (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    res.json(rows);
   });
 });
 
