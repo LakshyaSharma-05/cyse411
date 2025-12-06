@@ -4,6 +4,7 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const sqlite3 = require("sqlite3").verbose();
 const crypto = require("crypto");
+const lusca = require("lusca");
 
 const app = express();
 
@@ -17,6 +18,12 @@ app.use(
 
 app.use(bodyParser.json());
 app.use(cookieParser());
+app.use(lusca.csrf());
+
+// Optional: For API clients, expose the CSRF token for JavaScript apps to fetch
+app.get("/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 // --- IN-MEMORY SQLITE DB (clean) ---
 const db = new sqlite3.Database(":memory:");
