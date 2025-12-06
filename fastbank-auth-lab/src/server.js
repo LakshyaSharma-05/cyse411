@@ -2,8 +2,9 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const crypto = require("crypto");
-// bcrypt is installed but NOT used in the vulnerable baseline:
 const bcrypt = require("bcrypt");
+const rateLimit = require('express-rate-limit');
+const csrf = require('csurf');
 
 const app = express();
 const PORT = 3001;
@@ -11,40 +12,57 @@ const PORT = 3001;
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 login attempts
+  message: 'Too many login attempts, please try again later'
+});
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many requests, please try again later'
+});
+
+const csrfProtection = csrf({ cookie: true });
+
 app.use(express.static("public"));
 
-/**
- * VULNERABLE FAKE USER DB
- * For simplicity, we start with a single user whose password is "password123".
- * In the vulnerable version, we hash with a fast hash (SHA-256-like).
- */
-const users = [
-  {
+const users = [];
+
+(async () => {
+  const passwordHash = await bcrypt.hash("password123", 12);
+  users.push({
     id: 1,
     username: "student",
-    // VULNERABLE: fast hash without salt
-    passwordHash: fastHash("password123") // students must replace this scheme with bcrypt
-  }
-];
+    passwordHash: passwordHash
+  });
+})();
 
-// In-memory session store
-const sessions = {}; // token -> { userId }
+const sessions = {}; // token -> { userId, createdAt }
 
-/**
- * VULNERABLE FAST HASH FUNCTION
- * Students MUST STOP using this and replace logic with bcrypt.
- */
-function fastHash(password) {
-  return crypto.createHash("sha256").update(password).digest("hex");
+function generateSecureToken() {
+  return crypto.randomBytes(32).toString('hex');
 }
 
-// Helper: find user by username
 function findUser(username) {
   return users.find((u) => u.username === username);
 }
 
-// Home API just to show who is logged in
-app.get("/api/me", (req, res) => {
+
+setInterval(() => {
+  const now = Date.now();
+  const ONE_HOUR = 60 * 60 * 1000;
+  Object.keys(sessions).forEach(token => {
+    if (now - sessions[token].createdAt > ONE_HOUR) {
+      delete sessions[token];
+    }
+  });
+}, 5 * 60 * 1000); // Run every 5 minutes
+
+
+app.get("/api/me", generalLimiter, (req, res) => {
   const token = req.cookies.session;
   if (!token || !sessions[token]) {
     return res.status(401).json({ authenticated: false });
@@ -54,53 +72,53 @@ app.get("/api/me", (req, res) => {
   res.json({ authenticated: true, username: user.username });
 });
 
-/**
- * VULNERABLE LOGIN ENDPOINT
- * - Uses fastHash instead of bcrypt
- * - Error messages leak whether username exists
- * - Session token is simple and predictable
- * - Cookie lacks security flags
- */
-app.post("/api/login", (req, res) => {
+app.post("/api/login", loginLimiter, csrfProtection, async (req, res) => {
   const { username, password } = req.body;
+  
   const user = findUser(username);
-
+  
   if (!user) {
-    // VULNERABLE: username enumeration via message
     return res
       .status(401)
-      .json({ success: false, message: "Unknown username" });
+      .json({ success: false, message: "Invalid credentials" });
   }
-
-  const candidateHash = fastHash(password);
-  if (candidateHash !== user.passwordHash) {
+  
+  const isValid = await bcrypt.compare(password, user.passwordHash);
+  
+  if (!isValid) {
     return res
       .status(401)
-      .json({ success: false, message: "Wrong password" });
+      .json({ success: false, message: "Invalid credentials" });
   }
-
-  // VULNERABLE: predictable token
-  const token = username + "-" + Date.now();
-
-  // VULNERABLE: session stored without expiration
-  sessions[token] = { userId: user.id };
-
-  // VULNERABLE: cookie without httpOnly, secure, sameSite
+  
+  const token = generateSecureToken();
+  
+  sessions[token] = { 
+    userId: user.id,
+    createdAt: Date.now()
+  };
+  
   res.cookie("session", token, {
-    // students must add: httpOnly: true, secure: true, sameSite: "lax"
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 3600000 // 1 hour
   });
-
-  // Client-side JS (login.html) will store this token in localStorage (vulnerable)
+  
   res.json({ success: true, token });
 });
 
-app.post("/api/logout", (req, res) => {
+app.post("/api/logout", csrfProtection, (req, res) => {
   const token = req.cookies.session;
   if (token && sessions[token]) {
     delete sessions[token];
   }
   res.clearCookie("session");
   res.json({ success: true });
+});
+
+app.get("/api/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
 });
 
 app.listen(PORT, () => {
