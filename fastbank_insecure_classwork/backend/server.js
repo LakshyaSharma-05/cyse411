@@ -10,7 +10,6 @@ const csrf = require('csurf');
 
 const app = express();
 
-// --- BASIC CORS (clean, not vulnerable) ---
 app.use(
   cors({
     origin: ["http://localhost:3001", "http://127.0.0.1:3001"],
@@ -22,10 +21,9 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// --- RATE LIMITING (security) ---
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 login attempts
+  windowMs: 15 * 60 * 1000, 
+  max: 5,
   message: 'Too many login attempts, please try again later'
 });
 
@@ -35,10 +33,8 @@ const transferLimiter = rateLimit({
   message: 'Too many requests, please try again later'
 });
 
-// --- CSRF PROTECTION (security) ---
 const csrfProtection = csrf({ cookie: true });
 
-// --- IN-MEMORY SQLITE DB (clean) ---
 const db = new sqlite3.Database(":memory:");
 
 db.serialize(async () => {
@@ -70,7 +66,6 @@ db.serialize(async () => {
 
   const passwordHash = await bcrypt.hash("password123", 12);
 
-  // FIXED: Use parameterized query
   db.run(`INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)`,
     ['alice', passwordHash, 'alice@example.com']);
 
@@ -80,10 +75,8 @@ db.serialize(async () => {
     [1, 100, 'Groceries']);
 });
 
-// --- SESSION STORE (simple, predictable token exactly like assignment) ---
 const sessions = {};
 
-// REMOVED: fastHash function (no longer needed)
 
 function auth(req, res, next) {
   const sid = req.cookies.sid;
@@ -92,22 +85,19 @@ function auth(req, res, next) {
   next();
 }
 
-// FIXED: Secure random session ID generator
 function generateSecureSessionId() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-// ------------------------------------------------------------
-// FIXED: Secure login with bcrypt, parameterized queries, rate limiting
-// ------------------------------------------------------------
+
 app.post("/login", loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
-  // FIXED: Parameterized query to prevent SQL injection
+
   const sql = `SELECT id, username, password_hash FROM users WHERE username = ?`;
 
   db.get(sql, [username], async (err, user) => {
-    // FIXED: Generic error message to prevent username enumeration
+
     if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
     // FIXED: Use bcrypt.compare instead of fast hash
@@ -117,25 +107,23 @@ app.post("/login", loginLimiter, async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // FIXED: Cryptographically secure session ID
+
     const sid = generateSecureSessionId();
     sessions[sid] = { userId: user.id };
 
-    // FIXED: Secure cookie settings
+
     res.cookie("sid", sid, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 3600000 // 1 hour
+      maxAge: 3600000
     });
 
     res.json({ success: true });
   });
 });
 
-// ------------------------------------------------------------
-// FIXED: /me with parameterized query
-// ------------------------------------------------------------
+
 app.get("/me", auth, (req, res) => {
   db.get(`SELECT username, email FROM users WHERE id = ?`, [req.user.id], (err, row) => {
     if (err) return res.status(500).json({ error: 'Database error' });
@@ -143,13 +131,10 @@ app.get("/me", auth, (req, res) => {
   });
 });
 
-// ------------------------------------------------------------
-// FIXED: SQL injection in transaction search
-// ------------------------------------------------------------
-app.get("/transactions", auth, (req, res) => {
+
+app.get("/transactions", auth, transferLimiter, (req, res) => {
   const q = req.query.q || "";
   
-  // FIXED: Parameterized query
   const sql = `
     SELECT id, amount, description
     FROM transactions
@@ -168,13 +153,11 @@ app.post("/feedback", auth, csrfProtection, transferLimiter, (req, res) => {
   const comment = req.body.comment;
   const userId = req.user.id;
 
-  // FIXED: Parameterized queries
   db.get(`SELECT username FROM users WHERE id = ?`, [userId], (err, row) => {
     if (err || !row) return res.status(500).json({ error: 'Database error' });
     
     const username = row.username;
 
-    // FIXED: Parameterized insert
     const insert = `INSERT INTO feedback (user, comment) VALUES (?, ?)`;
     
     db.run(insert, [username, comment], (err) => {
@@ -198,9 +181,6 @@ app.get("/feedback", auth, transferLimiter, (req, res) => {
   });
 });
 
-// ------------------------------------------------------------
-// FIXED: CSRF protection + SQLi in email update
-// ------------------------------------------------------------
 app.post("/change-email", auth, csrfProtection, transferLimiter, (req, res) => {
   const newEmail = req.body.email;
 
@@ -208,7 +188,6 @@ app.post("/change-email", auth, csrfProtection, transferLimiter, (req, res) => {
     return res.status(400).json({ error: "Invalid email" });
   }
 
-  // FIXED: Parameterized query
   const sql = `UPDATE users SET email = ? WHERE id = ?`;
   
   db.run(sql, [newEmail, req.user.id], (err) => {
@@ -217,12 +196,10 @@ app.post("/change-email", auth, csrfProtection, transferLimiter, (req, res) => {
   });
 });
 
-// ADDED: CSRF token endpoint
 app.get("/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-// ------------------------------------------------------------
 app.listen(4000, () =>
   console.log("FastBank Version A backend running on http://localhost:4000")
 );
