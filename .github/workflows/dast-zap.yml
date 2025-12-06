@@ -1,15 +1,11 @@
 name: DAST - OWASP ZAP Full Scan
 
 on:
-  workflow_dispatch:    # run manually from Actions tab
-  # You can also add:
-  # push:
-  #   branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  zap_scan:
+  zap-full-scan:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,23 +13,20 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
-      - name: Install lab dependencies
-        working-directory: fastbank_insecure_classwork/backend
-        run: |
-          npm install
+          node-version: '18'
 
       - name: Start vulnerable app
-        working-directory: fastbank_insecure_classwork/backend
+        working-directory: ./fastbank_insecure_classwork
         run: |
+          npm install
           npm start &
-          # wait for the server to boot
-          sleep 20
 
       - name: Run OWASP ZAP full scan
-        uses: zaproxy/action-full-scan@v0.13.0
+        uses: zaproxy/action-full-scan@v0.10.0
         with:
-          target: 'http://host.docker.internal:3000'
-          fail_action: true     # fail job if ZAP finds alerts
-          allow_issue_writing: false   # don't auto-open GitHub issues
+          target: 'http://localhost:3000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+
+      - name: Stop vulnerable app
+        run: pkill -f "node"
