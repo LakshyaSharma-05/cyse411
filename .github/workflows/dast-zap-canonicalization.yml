@@ -3,6 +3,10 @@ name: DAST - ZAP Canonicalization
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   zap-scan:
     name: ZAP Scan - Canonicalization
