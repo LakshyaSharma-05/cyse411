@@ -167,7 +167,7 @@ app.post("/feedback", auth, csrfProtection, transferLimiter, (req, res) => {
   });
 });
 
-app.get("/feedback", auth, (req, res) => {
+app.get("/feedback", auth, transferLimiter, (req, res) => {
   db.all("SELECT user, comment FROM feedback ORDER BY id DESC", (err, rows) => {
     if (err) return res.status(500).json({ error: 'Database error' });
     res.json(rows);
