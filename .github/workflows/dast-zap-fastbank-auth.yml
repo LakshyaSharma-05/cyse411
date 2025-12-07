@@ -3,6 +3,10 @@ name: DAST - ZAP FastBank Auth
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   zap-scan:
     name: ZAP Scan - FastBank Auth
