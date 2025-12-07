@@ -1,4 +1,16 @@
 app.get('/search', (req, res) => {
   const q = req.query.q || '';
-  res.send(`<h1>Results for ${q}</h1>`);
+  const escapeHtml = (text) => {
+    return text.replace(/[&<>"']/g, (char) => {
+      const entities = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      };
+      return entities[char];
+    });
+  };
+  res.send(`<h1>Results for ${escapeHtml(q)}</h1>`);
 });
