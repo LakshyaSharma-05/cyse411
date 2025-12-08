@@ -3,7 +3,6 @@ const app = express();
 
 app.use(express.json());
 
-// Fake "database"
 const users = [
   { id: 1, name: "Alice", role: "customer", department: "north" },
   { id: 2, name: "Bob", role: "customer", department: "south" },
@@ -17,9 +16,6 @@ const orders = [
   { id: 4, userId: 2, item: "Keyboard", region: "south", total: 60 },
 ];
 
-// Very simple "authentication" via headers:
-//   X-User-Id: <user id>
-//   (we pretend that real auth already happened)
 function fakeAuth(req, res, next) {
   const idHeader = req.header("X-User-Id");
   const id = idHeader ? parseInt(idHeader, 10) : null;
@@ -29,15 +25,12 @@ function fakeAuth(req, res, next) {
     return res.status(401).json({ error: "Unauthenticated: set X-User-Id" });
   }
 
-  // Attach authenticated user to the request
   req.user = user;
   next();
 }
 
-// Apply fakeAuth to all routes below this line
 app.use(fakeAuth);
 
-// VULNERABLE endpoint: no ownership check (IDOR)
 app.get("/orders/:id", (req, res) => {
   const orderId = parseInt(req.params.id, 10);
 
@@ -46,18 +39,15 @@ app.get("/orders/:id", (req, res) => {
     return res.status(404).json({ error: "Order not found" });
   }
 
-  // BUG: no check that order.userId === req.user.id
   return res.json(order);
 });
 
 
 
-// Health check
 app.get("/", (req, res) => {
   res.json({ message: "Access Control Tutorial API", currentUser: req.user });
 });
 
-// Start server
 const PORT = 3000;
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
