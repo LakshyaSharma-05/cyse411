@@ -20,7 +20,7 @@ jobs:
           node-version: '18'
 
       - name: Start vulnerable app
-        working-directory: ./fastbank_insecure_classwork
+        working-directory: ./fastbank_insecure_classwork/backend
         run: |
           npm install
           npm start &
