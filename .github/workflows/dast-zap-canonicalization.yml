@@ -29,10 +29,25 @@ jobs:
         working-directory: ./canonicalization-example
         run: |
           npm start &
-          sleep 10
+          sleep 15
+          echo "App should be running on http://localhost:4000"
       
       - name: Run OWASP ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.4.0
         with:
-          target: 'http://localhost:3000'
+          target: 'http://localhost:4000'
           allow_issue_writing: false
+      
+      - name: Upload ZAP Report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: zap-scan-report-canonicalization
+          path: |
+            report_html.html
+            report_md.md
+            report_json.json
+      
+      - name: Stop vulnerable app
+        if: always()
+        run: pkill -f "node" || true
